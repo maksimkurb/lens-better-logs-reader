@@ -1,13 +1,14 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Renderer } from "@freelensapp/extensions";
-import { attachHighlighting, HIGHLIGHT_CSS, type HighlightModel } from "./highlight";
+import { attachHighlighting, HIGHLIGHT_CSS, type HighlightEditor, type HighlightModel } from "./highlight";
 
 const { MonacoEditor } = Renderer.Component;
 const { podsApi } = Renderer.K8sApi;
 
 const POLL_MS = 2000;
 const TAIL_LINES = 20000;
+const SEARCH_DELAY_MS = 400;
 
 // Hide everything the built-in tab renders inside its log list, and its search box
 // (the editor has its own, Ctrl+F). The built-in controls row stays and drives us.
@@ -32,7 +33,7 @@ interface View {
 }
 
 /** The slice of Monaco's editor API used here. */
-interface Editor {
+interface Editor extends HighlightEditor {
   getModel(): HighlightModel | null;
   onDidChangeModel(listener: () => void): { dispose(): void };
   onDidContentSizeChange(listener: () => void): { dispose(): void };
@@ -87,6 +88,44 @@ function findEditor(host: HTMLElement): Editor | null {
   return fiber?.stateNode.editor ?? null;
 }
 
+/**
+ * Monaco searches the whole model on every keystroke of its find box, which stalls on big logs.
+ * Hold typed input back until the user pauses (Enter searches at once).
+ */
+function delaySearchInput(host: HTMLElement): () => void {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let release: (() => void) | undefined;
+  let replaying = false;
+  const flush = () => {
+    clearTimeout(timer);
+    const fire = release;
+    release = undefined;
+    fire?.();
+  };
+  const onInput = (event: Event) => {
+    const input = event.target as HTMLElement;
+    if (replaying || !input.closest?.(".find-widget")) return;
+    event.stopImmediatePropagation();
+    clearTimeout(timer);
+    release = () => {
+      replaying = true;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      replaying = false;
+    };
+    timer = setTimeout(flush, SEARCH_DELAY_MS);
+  };
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (event.key === "Enter") flush();
+  };
+  host.addEventListener("input", onInput, true);
+  host.addEventListener("keydown", onKeyDown, true);
+  return () => {
+    clearTimeout(timer);
+    host.removeEventListener("input", onInput, true);
+    host.removeEventListener("keydown", onKeyDown, true);
+  };
+}
+
 const atBottom = (editor: Editor) =>
   editor.getScrollTop() + editor.getLayoutInfo().height >= editor.getScrollHeight() - 2;
 
@@ -127,7 +166,7 @@ function LogsView({ root, host }: { root: Element; host: HTMLElement }) {
     const attach = () => {
       detach?.();
       const model = editor.getModel();
-      detach = model ? attachHighlighting(model) : undefined;
+      detach = model ? attachHighlighting(editor, model) : undefined;
     };
     attach();
     const subscriptions = [
@@ -137,7 +176,9 @@ function LogsView({ root, host }: { root: Element; host: HTMLElement }) {
         if (stickToBottom.current) editor.setScrollTop(editor.getScrollHeight());
       }),
     ];
+    const stopDelaying = delaySearchInput(host);
     return () => {
+      stopDelaying();
       subscriptions.forEach((s) => s.dispose());
       detach?.();
     };
