@@ -8,7 +8,7 @@ Lens / OpenLens / Freelens extension that replaces the log list of the built-in 
 
 ## Compatibility
 
-Freelens `>=1.0.0`, and Lens / OpenLens `>=6.0.0`. The plugin only uses the extension API shared by all three (`MonacoEditor`, `podsApi.getLogs`), which I checked against the type definitions and the built-in logs tab's DOM in `@k8slens/core` 6.5.2 and `@freelensapp/core` 1.10.3. It has not been run in the apps themselves.
+Freelens `>=1.0.0`, and Lens / OpenLens `6.x` (their loader only accepts a `^major.minor` range in `engines.lens`). The plugin only uses the extension API shared by all three (`MonacoEditor`, `podsApi.getLogs`), which I checked against the type definitions and the built-in logs tab's DOM in `@k8slens/core` 6.5.2 and `@freelensapp/core` 1.10.3. It has not been run in the apps themselves.
 
 ## Install
 

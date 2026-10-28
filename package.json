@@ -15,7 +15,7 @@
   "renderer": "dist/renderer.js",
   "engines": {
     "freelens": ">=1.0.0",
-    "lens": ">=6.0.0"
+    "lens": "^6.0.0"
   },
   "files": [
     "dist/**/*"
