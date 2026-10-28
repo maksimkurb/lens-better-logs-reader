@@ -1,6 +1,6 @@
 {
   "name": "@maksimkurb/lens-better-logs-plugin",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Replaces the built-in pod logs list in Lens / OpenLens / Freelens with a Monaco editor: select and copy across the whole log, no UI bleed.",
   "author": "Maksim Kurb",
   "license": "MIT",
@@ -14,6 +14,7 @@
   "main": "dist/main.js",
   "renderer": "dist/renderer.js",
   "engines": {
+    "freelens": ">=1.0.0",
     "lens": "^6.0.0"
   },
   "files": [
