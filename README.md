@@ -20,7 +20,9 @@ Freelens `1.x` and Lens / OpenLens `6.x` (their loaders only accept a `^major.mi
 
 The extension API has no hook for the logs dock tab, so the built-in tab is kept (pod/container selectors, tab handling) and only its virtualized `.LogList` is hidden and replaced by a Monaco editor. Logs are fetched with `podsApi.getLogs` (last 20000 lines, refreshed every 2s) for the pod and container selected in the built-in tab. The built-in "Show timestamps", "Word wrap" and "Show previous terminated container" checkboxes keep working and drive the Monaco view. The view follows the tail only if it was already scrolled to the bottom.
 
-Limitation: it relies on the built-in tab's DOM and may need updates after Lens/Freelens UI changes.
+Timestamps are always fetched and stripped locally when the checkbox is off, so toggling them (and word wrap) is instant.
+
+Limitation: it relies on the built-in tab's DOM, and on reading the Monaco editor instance off the `MonacoEditor` component in the React tree (the component exposes no handle), so it may need updates after Lens/Freelens UI changes.
 
 ## Development
 
