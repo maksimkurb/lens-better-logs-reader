@@ -25,7 +25,7 @@ npm run build
 
 ## Publishing
 
-Set the `NPM_TOKEN` repository secret, bump `version` in `package.json`, then push a matching tag:
+Releases use npm Trusted Publishing (no token). On npmjs.com, open the package → Settings → Trusted Publisher, and add GitHub Actions with repository `maksimkurb/lens-better-logs-reader` and workflow `publish.yml`. Then bump `version` in `package.json`, then push a matching tag:
 
 ```bash
 git tag v0.1.0 && git push origin v0.1.0
