@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Renderer } from "@freelensapp/extensions";
 import { attachHighlighting, HIGHLIGHT_CSS, type HighlightModel } from "./highlight";
@@ -77,17 +77,25 @@ function isAtBottom(host: HTMLElement) {
 }
 
 function scrollToEnd(host: HTMLElement) {
-  const input = host.querySelector<HTMLTextAreaElement>("textarea");
-  if (!input) return;
-  const hadFocus = document.activeElement === input;
-  // A non-empty hidden textarea means a selection exists; moving the cursor would drop it.
-  if (hadFocus && input.value) return;
-  // Drive Monaco through its own Ctrl+End binding, which needs the editor focused.
+  // Pressing the bottom of the vertical scrollbar jumps there without touching focus or selection.
+  const track = host.querySelector<HTMLElement>(".scrollbar.vertical");
+  if (track) {
+    const { left, bottom } = track.getBoundingClientRect();
+    const init = { clientX: left + 1, clientY: bottom - 1, bubbles: true, cancelable: true, button: 0, buttons: 1, pointerId: 1 };
+    track.dispatchEvent(new PointerEvent("pointerdown", init));
+    track.dispatchEvent(new MouseEvent("mousedown", init));
+    window.dispatchEvent(new PointerEvent("pointerup", { pointerId: 1, bubbles: true }));
+    window.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    return;
+  }
+  // Fallback: Monaco's own Ctrl+End, which needs the edit element focused.
+  const input = host.querySelector<HTMLElement>(".native-edit-context, textarea.inputarea");
+  if (!input || host.contains(document.activeElement)) return;
   input.focus({ preventScroll: true });
   input.dispatchEvent(
     new KeyboardEvent("keydown", { key: "End", code: "End", keyCode: 35, ctrlKey: true, bubbles: true }),
   );
-  if (!hadFocus) input.blur();
+  input.blur();
 }
 
 function LogsView({ root, host }: { root: Element; host: HTMLElement }) {
@@ -132,6 +140,7 @@ function LogsView({ root, host }: { root: Element; host: HTMLElement }) {
           },
         );
         if (cancelled) return;
+        // Remember where the view was before the update; the editor follows once it has laid out.
         stickToBottom.current = isAtBottom(host);
         setLogs((prev) => (prev === result ? prev : result));
       } catch (error) {
@@ -147,10 +156,6 @@ function LogsView({ root, host }: { root: Element; host: HTMLElement }) {
     };
   }, [key, host]);
 
-  // Follow the tail only if the view was already at the bottom before the update.
-  useLayoutEffect(() => {
-    if (stickToBottom.current) requestAnimationFrame(() => scrollToEnd(host));
-  }, [logs, host]);
 
   return (
     <MonacoEditor
@@ -172,7 +177,12 @@ function LogsView({ root, host }: { root: Element; host: HTMLElement }) {
         automaticLayout: true,
         contextmenu: false,
       }}
-      style={{ position: "absolute", inset: 0 }}
+      onDidContentSizeChange={() => {
+        // Fires once the new text is laid out, which is also what happens on first open.
+        if (stickToBottom.current) requestAnimationFrame(() => scrollToEnd(host));
+      }}
+      // The wrapper otherwise sizes itself from the line count.
+      style={{ position: "absolute", inset: 0, height: "100%" }}
     />
   );
 }
