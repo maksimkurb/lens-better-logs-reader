@@ -18,7 +18,7 @@ Freelens `1.x` and Lens / OpenLens `6.x` (their loaders only accept a `^major.mi
 
 ## How it works
 
-The extension API has no hook for the logs dock tab, so the built-in tab is kept (pod/container selectors, tab handling) and only its virtualized `.LogList` is hidden and replaced by a Monaco editor. Logs are fetched with `podsApi.getLogs` (last 20000 lines, refreshed every 2s) for the pod and container selected in the built-in tab. The built-in "Show timestamps", "Word wrap" and "Show previous terminated container" checkboxes keep working and drive the Monaco view. The view follows the tail only if it was already scrolled to the bottom.
+The extension API has no hook for the logs dock tab, so the built-in tab is kept (pod/container selectors, tab handling) and only its virtualized `.LogList` is hidden and replaced by a Monaco editor. Logs are fetched with `podsApi.getLogs` for the pod and container selected in the built-in tab: the last 1000 lines first, then only lines newer than the last one seen (every 2s). Scrolling to the top loads earlier lines (the tail grows 4x each time, up to 200000). The built-in tab keeps asking for the same logs in the background; while the editor shows that pod and container, the plugin answers those calls from its own copy, so the API server is queried once. The built-in "Show timestamps", "Word wrap" and "Show previous terminated container" checkboxes keep working and drive the Monaco view. The view follows the tail only if it was already scrolled to the bottom.
 
 Timestamps are always fetched and stripped locally when the checkbox is off, so toggling them (and word wrap) is instant.
 
