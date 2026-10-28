@@ -1,0 +1,49 @@
+{
+  "name": "@maksimkurb/lens-better-logs-plugin",
+  "version": "0.1.0",
+  "description": "Replaces the built-in pod logs list in Lens / OpenLens / Freelens with a Monaco editor: select and copy across the whole log, no UI bleed.",
+  "author": "Maksim Kurb",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/maksimkurb/lens-better-logs-reader.git"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "main": "dist/main.js",
+  "renderer": "dist/renderer.js",
+  "engines": {
+    "lens": "^6.0.0"
+  },
+  "files": [
+    "dist/**/*"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && NODE_ENV=production webpack",
+    "dev": "NODE_ENV=development webpack --watch",
+    "typecheck": "tsc --noEmit",
+    "prepack": "npm run build"
+  },
+  "keywords": [
+    "lens",
+    "openlens",
+    "freelens",
+    "extension",
+    "kubernetes",
+    "logs"
+  ],
+  "devDependencies": {
+    "@freelensapp/extensions": "^1.10.3",
+    "@types/node": "^20.0.0",
+    "@types/react": "^17.0.45",
+    "@types/react-dom": "^17.0.26",
+    "mobx": "^6.16.1",
+    "react": "^17.0.2",
+    "react-dom": "^17.0.2",
+    "ts-loader": "^9.5.1",
+    "typescript": "^5.4.0",
+    "webpack": "^5.90.0",
+    "webpack-cli": "^5.1.4"
+  }
+}
