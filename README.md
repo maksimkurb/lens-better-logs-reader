@@ -4,11 +4,13 @@ Lens / OpenLens / Freelens extension that replaces the log list of the built-in 
 
 - Select and copy (`Ctrl+A`, `Ctrl+C`) across the **whole** log, not just what fits on screen.
 - Selection stays inside the editor and no longer spills onto the app UI.
-- Search with `Ctrl+F` inside the editor.
+- Search with `Ctrl+F` inside the editor (the built-in search box is hidden).
+- Highlights timestamps, log levels (`ERROR`, `WARN`, `INFO`, `DEBUG`), `[logger.names]`, UUIDs and URLs.
+- Follows new lines while you are scrolled to the bottom; scroll up and it stays put.
 
 ## Compatibility
 
-Freelens `>=1.0.0`, and Lens / OpenLens `6.x` (their loader only accepts a `^major.minor` range in `engines.lens`). The plugin only uses the extension API shared by all three (`MonacoEditor`, `podsApi.getLogs`), which I checked against the type definitions and the built-in logs tab's DOM in `@k8slens/core` 6.5.2 and `@freelensapp/core` 1.10.3. It has not been run in the apps themselves.
+Freelens `1.x` and Lens / OpenLens `6.x` (their loaders only accept a `^major.minor` range in `engines`). The plugin only uses the extension API shared by all three (`MonacoEditor`, `podsApi.getLogs`), which I checked against the type definitions and the built-in logs tab's DOM in `@k8slens/core` 6.5.2 and `@freelensapp/core` 1.10.3. It has not been run in the apps themselves.
 
 ## Install
 
@@ -16,9 +18,9 @@ Freelens `>=1.0.0`, and Lens / OpenLens `6.x` (their loader only accepts a `^maj
 
 ## How it works
 
-The extension API has no hook for the logs dock tab, so the built-in tab is kept (pod/container selectors, tab handling) and only its virtualized `.LogList` is hidden and replaced by a Monaco editor. Logs are fetched with `podsApi.getLogs` (last 20000 lines, refreshed every 2s) for the pod and container selected in the built-in tab. The view follows the tail unless the editor is focused.
+The extension API has no hook for the logs dock tab, so the built-in tab is kept (pod/container selectors, tab handling) and only its virtualized `.LogList` is hidden and replaced by a Monaco editor. Logs are fetched with `podsApi.getLogs` (last 20000 lines, refreshed every 2s) for the pod and container selected in the built-in tab. The built-in "Show timestamps", "Word wrap" and "Show previous terminated container" checkboxes keep working and drive the Monaco view. The view follows the tail only if it was already scrolled to the bottom.
 
-Limitations: the built-in "timestamps" / "previous" toggles and its search box don't affect the Monaco view; it relies on the built-in tab's DOM and may need updates after Lens/Freelens UI changes.
+Limitation: it relies on the built-in tab's DOM and may need updates after Lens/Freelens UI changes.
 
 ## Development
 
