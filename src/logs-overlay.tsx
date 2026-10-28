@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Renderer } from "@freelensapp/extensions";
+import { attachHighlighting, HIGHLIGHT_CSS, type HighlightModel } from "./highlight";
 
 const { MonacoEditor } = Renderer.Component;
 const { podsApi } = Renderer.K8sApi;
@@ -13,7 +14,9 @@ const TAIL_LINES = 20000;
 const STYLE = `
 .PodLogs .LogList > :not(.BetterLogs) { display: none !important; }
 .PodLogs .LogSearch { display: none !important; }
-`;
+/* Keep native selection out of the gutter, so double-click selects words only. */
+.BetterLogs .margin, .BetterLogs .margin * { user-select: none !important; -webkit-user-select: none !important; }
+${HIGHLIGHT_CSS}`;
 
 interface Target {
   namespace: string;
@@ -90,7 +93,9 @@ function scrollToEnd(host: HTMLElement) {
 function LogsView({ root, host }: { root: Element; host: HTMLElement }) {
   const [logs, setLogs] = useState("");
   const [view, setView] = useState<View>(() => readView(root));
+  const [ready, setReady] = useState(false);
   const stickToBottom = useRef(true);
+  const detachHighlight = useRef<() => void>();
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -99,6 +104,12 @@ function LogsView({ root, host }: { root: Element; host: HTMLElement }) {
     }, 500);
     return () => clearInterval(timer);
   }, [root]);
+
+  // The editor wrapper reports a model only on *changes*, so switch ids once after mount to receive the first one.
+  useEffect(() => {
+    setReady(true);
+    return () => detachHighlight.current?.();
+  }, []);
 
   const key = JSON.stringify(view.target);
 
@@ -143,7 +154,11 @@ function LogsView({ root, host }: { root: Element; host: HTMLElement }) {
 
   return (
     <MonacoEditor
-      id={`better-logs-${view.target?.pod ?? "none"}`}
+      id={ready ? `better-logs-${view.target?.pod ?? "none"}` : "better-logs-init"}
+      onModelChange={(model: HighlightModel) => {
+        detachHighlight.current?.();
+        detachHighlight.current = attachHighlighting(model);
+      }}
       readOnly
       value={logs}
       language={"plaintext" as "yaml"}

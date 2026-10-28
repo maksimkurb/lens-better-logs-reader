@@ -5,6 +5,7 @@ Lens / OpenLens / Freelens extension that replaces the log list of the built-in 
 - Select and copy (`Ctrl+A`, `Ctrl+C`) across the **whole** log, not just what fits on screen.
 - Selection stays inside the editor and no longer spills onto the app UI.
 - Search with `Ctrl+F` inside the editor (the built-in search box is hidden).
+- Highlights timestamps, log levels (`ERROR`, `WARN`, `INFO`, `DEBUG`), `[logger.names]`, UUIDs and URLs.
 - Follows new lines while you are scrolled to the bottom; scroll up and it stays put.
 
 ## Compatibility
