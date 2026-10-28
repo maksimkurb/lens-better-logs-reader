@@ -8,9 +8,11 @@ Lens / OpenLens / Freelens extension that replaces the log list of the built-in 
 - Highlights timestamps, log levels (`ERROR`, `WARN`, `INFO`, `DEBUG`), `[logger.names]`, UUIDs and URLs.
 - Follows new lines while you are scrolled to the bottom; scroll up and it stays put.
 
+![Demo image](./docs/demo.png)
+
 ## Compatibility
 
-Freelens `1.x` and Lens / OpenLens `6.x` (their loaders only accept a `^major.minor` range in `engines`). The plugin only uses the extension API shared by all three (`MonacoEditor`, `podsApi.getLogs`), which I checked against the type definitions and the built-in logs tab's DOM in `@k8slens/core` 6.5.2 and `@freelensapp/core` 1.10.3. It has not been run in the apps themselves.
+Freelens `1.x` and Lens / OpenLens `6.x`.
 
 ## Install
 
