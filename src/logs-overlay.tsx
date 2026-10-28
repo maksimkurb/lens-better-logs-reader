@@ -1,13 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Renderer } from "@freelensapp/extensions";
+import { LogSource, stripTimestamps, type Target } from "./log-source";
 import { attachHighlighting, HIGHLIGHT_CSS, type HighlightEditor, type HighlightModel } from "./highlight";
 
 const { MonacoEditor } = Renderer.Component;
-const { podsApi } = Renderer.K8sApi;
 
 const POLL_MS = 2000;
-const TAIL_LINES = 20000;
+const OLDER_AT_PX = 100;
 const SEARCH_DELAY_MS = 400;
 
 // Hide everything the built-in tab renders inside its log list, and its search box
@@ -18,13 +18,6 @@ const STYLE = `
 /* Keep native selection out of the gutter, so double-click selects words only. */
 .BetterLogs .margin, .BetterLogs .margin * { user-select: none !important; -webkit-user-select: none !important; }
 ${HIGHLIGHT_CSS}`;
-
-interface Target {
-  namespace: string;
-  pod: string;
-  container: string;
-  previous: boolean;
-}
 
 interface View {
   target: Target | null;
@@ -37,6 +30,8 @@ interface Editor extends HighlightEditor {
   getModel(): HighlightModel | null;
   onDidChangeModel(listener: () => void): { dispose(): void };
   onDidContentSizeChange(listener: () => void): { dispose(): void };
+  onDidScrollChange(listener: () => void): { dispose(): void };
+  getTopForLineNumber(line: number): number;
   getScrollTop(): number;
   getScrollHeight(): number;
   getLayoutInfo(): { height: number };
@@ -129,14 +124,15 @@ function delaySearchInput(host: HTMLElement): () => void {
 const atBottom = (editor: Editor) =>
   editor.getScrollTop() + editor.getLayoutInfo().height >= editor.getScrollHeight() - 2;
 
-// kubectl-style RFC3339 prefix added when asking the API for timestamps.
-const TIMESTAMP_PREFIX = /^\d{4}-\d{2}-\d{2}T[\d:.]+(?:Z|[+-]\d{2}:\d{2}) /gm;
-
 function LogsView({ root, host }: { root: Element; host: HTMLElement }) {
   const [logs, setLogs] = useState("");
   const [view, setView] = useState<View>(() => readView(root));
   const stickToBottom = useRef(true);
   const editorRef = useRef<Editor | null>(null);
+  const sourceRef = useRef<LogSource | null>(null);
+  // Line to keep in place after older lines were added in front of it.
+  const anchorLine = useRef<number | null>(null);
+  const loadingOlder = useRef(false);
 
   // React to the built-in controls as soon as they change.
   useEffect(() => {
@@ -173,7 +169,29 @@ function LogsView({ root, host }: { root: Element; host: HTMLElement }) {
       editor.onDidChangeModel(attach),
       // Fires once new text is laid out, which is also the first open.
       editor.onDidContentSizeChange(() => {
-        if (stickToBottom.current) editor.setScrollTop(editor.getScrollHeight());
+        if (anchorLine.current !== null) {
+          editor.setScrollTop(editor.getTopForLineNumber(anchorLine.current));
+          anchorLine.current = null;
+        } else if (stickToBottom.current) editor.setScrollTop(editor.getScrollHeight());
+      }),
+      // Like the built-in list, fetch earlier lines when the top is reached.
+      editor.onDidScrollChange(async () => {
+        const source = sourceRef.current;
+        if (!source?.hasOlder || loadingOlder.current || editor.getScrollTop() > OLDER_AT_PX) return;
+        loadingOlder.current = true;
+        try {
+          const first = editor.getVisibleRanges()[0]?.startLineNumber ?? 1;
+          const added = await source.loadOlder();
+          if (added && sourceRef.current === source) {
+            anchorLine.current = first + added;
+            stickToBottom.current = false;
+            setLogs(source.text);
+          }
+        } catch {
+          // Try again on the next scroll.
+        } finally {
+          loadingOlder.current = false;
+        }
       }),
     ];
     const stopDelaying = delaySearchInput(host);
@@ -189,24 +207,22 @@ function LogsView({ root, host }: { root: Element; host: HTMLElement }) {
   useEffect(() => {
     setLogs("");
     stickToBottom.current = true;
+    anchorLine.current = null;
     const target: Target | null = JSON.parse(key);
     if (!target) return;
+    const source = new LogSource(target);
+    sourceRef.current = source;
     let cancelled = false;
 
     const load = async () => {
       try {
-        // Always fetch timestamps, so toggling them is a local change rather than a refetch.
-        const result = await podsApi.getLogs(
-          { name: target.pod, namespace: target.namespace },
-          { container: target.container, timestamps: true, previous: target.previous, tailLines: TAIL_LINES },
-        );
-        if (cancelled) return;
+        if (!(await source.refresh()) || cancelled) return;
         // Remember where the view was before the update; the editor follows once it has laid out.
         const editor = editorRef.current;
         stickToBottom.current = editor ? atBottom(editor) : true;
-        setLogs((prev) => (prev === result ? prev : result));
+        setLogs(source.text);
       } catch (error) {
-        if (!cancelled) setLogs(`Failed to load logs: ${error}`);
+        if (!cancelled && !source.text) setLogs(`Failed to load logs: ${error}`);
       }
     };
 
@@ -215,10 +231,12 @@ function LogsView({ root, host }: { root: Element; host: HTMLElement }) {
     return () => {
       cancelled = true;
       clearInterval(timer);
+      source.dispose();
+      if (sourceRef.current === source) sourceRef.current = null;
     };
   }, [key]);
 
-  const shown = useMemo(() => (view.timestamps ? logs : logs.replace(TIMESTAMP_PREFIX, "")), [logs, view.timestamps]);
+  const shown = useMemo(() => (view.timestamps ? logs : stripTimestamps(logs)), [logs, view.timestamps]);
 
   return (
     <MonacoEditor
