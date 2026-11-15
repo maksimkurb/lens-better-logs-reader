@@ -228,6 +228,9 @@ function LogsView({ root, host }: { root: Element; host: HTMLElement }) {
         const source = sourceRef.current;
         if (!source?.hasOlder || loadingOlder.current || editor.getScrollTop() > OLDER_AT_PX) return;
         loadingOlder.current = true;
+        // At the top we are not following the tail; adding the loading line resizes the content and
+        // must not scroll to the bottom.
+        stickToBottom.current = false;
         const hideLoading = showLoadingLine(editor);
         try {
           const first = editor.getVisibleRanges()[0]?.startLineNumber ?? 1;
