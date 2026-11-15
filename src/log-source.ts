@@ -1,7 +1,5 @@
 import { Renderer } from "@freelensapp/extensions";
 
-const { podsApi } = Renderer.K8sApi;
-
 const INITIAL_LINES = 1000;
 const MAX_LINES = 200000;
 // Matches the RFC3339 prefix the API adds when asking for timestamps.
@@ -17,26 +15,37 @@ export interface Target {
 
 export const stripTimestamps = (text: string) => text.replace(TIMESTAMP_PREFIX, "");
 
-// The tab's own log store calls the same API object; keep the real call for ourselves.
-const fetchLogs: typeof podsApi.getLogs = podsApi.getLogs.bind(podsApi);
+type PodsApi = typeof Renderer.K8sApi.podsApi;
+type GetLogs = PodsApi["getLogs"];
 
 let active: LogSource | null = null;
+let fetchLogs: GetLogs | null = null;
+
+const stripped = (text: string, timestamps?: boolean) => (timestamps ? text : stripTimestamps(text));
 
 /**
  * The built-in (hidden) tab keeps fetching the logs it no longer shows. While we are showing the
  * same pod and container, answer it from our copy instead of asking the API server a second time.
+ *
+ * `podsApi` only exists in cluster frames (reading it elsewhere throws), so it is touched lazily,
+ * the first time a log source is created, never when the module loads.
  */
-podsApi.getLogs = async (
-  params: { name: string; namespace: string },
-  query: { container?: string; previous?: boolean; timestamps?: boolean } = {},
-) => {
-  const source = active;
-  if (source?.serves(params, query)) {
-    const text = await source.ready();
-    return query.timestamps ? text : stripTimestamps(text);
-  }
-  return fetchLogs(params, query);
-};
+function install(): GetLogs {
+  if (fetchLogs) return fetchLogs;
+  const { podsApi } = Renderer.K8sApi;
+  // The tab's own log store calls the same API object; keep the real call for ourselves.
+  const real: GetLogs = podsApi.getLogs.bind(podsApi);
+  fetchLogs = real;
+  podsApi.getLogs = (async (
+    params: { name: string; namespace: string },
+    query: { container?: string; previous?: boolean; timestamps?: boolean } = {},
+  ) => {
+    const source = active;
+    if (source?.serves(params, query)) return stripped(await source.ready(), query.timestamps);
+    return real(params, query);
+  }) as GetLogs;
+  return real;
+}
 
 /**
  * Holds the log of one container (always with timestamps). Starts with the last few lines, then
@@ -51,6 +60,7 @@ export class LogSource {
   private lastTimestamp: string | null = null;
 
   constructor(private target: Target) {
+    install();
     active = this;
   }
 
@@ -82,12 +92,12 @@ export class LogSource {
       const params = { name: t.pod, namespace: t.namespace };
       const base = { container: t.container, timestamps: true, previous: t.previous };
       if (this.lastTimestamp === null) {
-        const text = await fetchLogs(params, { ...base, tailLines: this.requested });
+        const text = await fetchLogs!(params, { ...base, tailLines: this.requested });
         this.set(text);
         this.hasOlder = countLines(text) >= this.requested;
         return true;
       }
-      const text: string = await fetchLogs(params, { ...base, sinceTime: this.lastTimestamp });
+      const text: string = await fetchLogs!(params, { ...base, sinceTime: this.lastTimestamp });
       // sinceTime is inclusive; drop lines already held.
       const fresh = text
         .split("\n")
@@ -110,7 +120,7 @@ export class LogSource {
       const t = this.target;
       const before = countLines(this.text);
       this.requested = Math.min(this.requested * 4, MAX_LINES);
-      const text = await fetchLogs(
+      const text = await fetchLogs!(
         { name: t.pod, namespace: t.namespace },
         { container: t.container, timestamps: true, previous: t.previous, tailLines: this.requested },
       );

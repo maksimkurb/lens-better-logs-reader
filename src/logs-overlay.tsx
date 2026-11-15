@@ -4,7 +4,6 @@ import { Renderer } from "@freelensapp/extensions";
 import { LogSource, stripTimestamps, type Target } from "./log-source";
 import { attachHighlighting, HIGHLIGHT_CSS, type HighlightEditor, type HighlightModel } from "./highlight";
 
-const { MonacoEditor } = Renderer.Component;
 
 const POLL_MS = 2000;
 const OLDER_AT_PX = 100;
@@ -236,6 +235,7 @@ function LogsView({ root, host }: { root: Element; host: HTMLElement }) {
     };
   }, [key]);
 
+  const { MonacoEditor } = Renderer.Component;
   const shown = useMemo(() => (view.timestamps ? logs : stripTimestamps(logs)), [logs, view.timestamps]);
 
   return (
