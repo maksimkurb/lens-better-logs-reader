@@ -43,6 +43,11 @@ interface Editor extends HighlightEditor {
   changeViewZones(callback: (accessor: ViewZoneAccessor) => void): void;
 }
 
+interface PrependableModel {
+  getValue(): string;
+  applyEdits(edits: { range: { startLineNumber: number; startColumn: number; endLineNumber: number; endColumn: number }; text: string }[]): void;
+}
+
 interface ViewZoneAccessor {
   addZone(zone: { afterLineNumber: number; heightInPx: number; domNode: HTMLElement }): string;
   removeZone(id: string): void;
@@ -169,6 +174,8 @@ function LogsView({ root, host }: { root: Element; host: HTMLElement }) {
   // Line to keep in place after older lines were added in front of it.
   const anchorLine = useRef<number | null>(null);
   const loadingOlder = useRef(false);
+  const positioned = useRef(false);
+  const timestampsRef = useRef(false);
 
   // React to the built-in controls as soon as they change.
   useEffect(() => {
@@ -221,25 +228,41 @@ function LogsView({ root, host }: { root: Element; host: HTMLElement }) {
         if (anchorLine.current !== null) {
           editor.setScrollTop(editor.getTopForLineNumber(anchorLine.current));
           anchorLine.current = null;
-        } else if (stickToBottom.current) editor.setScrollTop(editor.getScrollHeight());
+        } else if (stickToBottom.current) {
+          editor.setScrollTop(editor.getScrollHeight());
+          positioned.current = true;
+        }
       }),
       // Like the built-in list, fetch earlier lines when the top is reached.
       editor.onDidScrollChange(async () => {
         const source = sourceRef.current;
-        if (!source?.hasOlder || loadingOlder.current || editor.getScrollTop() > OLDER_AT_PX) return;
+        // `positioned`: the first scroll to the tail has happened, so a scrollTop near 0 is the user's.
+        if (!source?.hasOlder || loadingOlder.current || !positioned.current || editor.getScrollTop() > OLDER_AT_PX) return;
         loadingOlder.current = true;
-        // At the top we are not following the tail; adding the loading line resizes the content and
-        // must not scroll to the bottom.
-        stickToBottom.current = false;
+        stickToBottom.current = false; // we are at the top, not following the tail
+        // Where the first visible line sits inside the viewport; restored after the prepend.
+        const first = editor.getVisibleRanges()[0]?.startLineNumber ?? 1;
+        const offset = editor.getTopForLineNumber(first) - editor.getScrollTop();
         const hideLoading = showLoadingLine(editor);
         try {
-          const first = editor.getVisibleRanges()[0]?.startLineNumber ?? 1;
-          const added = await source.loadOlder();
-          stickToBottom.current = false; // removing the zone resizes the content; don't jump
+          await source.loadOlder();
+          if (sourceRef.current !== source) return;
           hideLoading();
-          if (added && sourceRef.current === source) {
-            anchorLine.current = first + added;
-            stickToBottom.current = false;
+          const shown = timestampsRef.current ? source.text : stripTimestamps(source.text);
+          const model = editor.getModel() as unknown as PrependableModel | null;
+          const current = model?.getValue() ?? "";
+          if (model && shown.length > current.length && shown.endsWith(current)) {
+            // Insert the older lines in front instead of replacing the text, so Monaco keeps the
+            // rest of the editor as it is, then put the same line back where it was.
+            const prefix = shown.slice(0, shown.length - current.length);
+            model.applyEdits([{ range: { startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 1 }, text: prefix }]);
+            const added = prefix.split("\n").length - 1;
+            const restore = () => editor.setScrollTop(editor.getTopForLineNumber(first + added) - offset);
+            restore();
+            requestAnimationFrame(restore);
+            setLogs(source.text);
+          } else if (shown !== current) {
+            anchorLine.current = first + Math.max(0, shown.split("\n").length - current.split("\n").length);
             setLogs(source.text);
           }
         } catch {
@@ -258,11 +281,13 @@ function LogsView({ root, host }: { root: Element; host: HTMLElement }) {
     };
   }, [editor, host]);
 
+  timestampsRef.current = view.timestamps;
   const key = JSON.stringify(view.target);
 
   useEffect(() => {
     setLogs("");
     stickToBottom.current = true;
+    positioned.current = false;
     anchorLine.current = null;
     const target: Target | null = JSON.parse(key);
     if (!target) return;
