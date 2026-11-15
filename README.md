@@ -12,7 +12,7 @@ Lens / OpenLens / Freelens extension that replaces the log list of the built-in 
 
 ## Compatibility
 
-Freelens `1.x` and Lens / OpenLens `6.x`.
+Freelens `2.x` (version `0.2.x` and newer). For Freelens `1.x` and Lens / OpenLens `6.x` use version `0.1.8`.
 
 ## Install
 
