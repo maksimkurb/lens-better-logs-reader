@@ -74,6 +74,17 @@ function mountHost(root: Element): HTMLElement | null {
  * instance off the component in the React tree. This is the one place that depends on that.
  */
 function findEditor(host: HTMLElement): Editor | null {
+  // Preferred: ask the host's Monaco which editors exist and take the one inside our host.
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const monaco = (globalThis as any).FreelensExtensionApi?.MonacoEditor;
+    const found = monaco?.editor?.getEditors?.().find((e: Editor & { getContainerDomNode(): HTMLElement }) =>
+      host.contains(e.getContainerDomNode()),
+    );
+    if (found) return found;
+  } catch {
+    // fall through to the React tree
+  }
   const element = host.querySelector('[data-test-id="monaco-editor"]');
   const key = element && Object.keys(element).find((k) => k.startsWith("__reactFiber$"));
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -153,8 +164,21 @@ function LogsView({ root, host }: { root: Element; host: HTMLElement }) {
   }, [root, host]);
 
   // Highlighting and follow-the-tail, through the editor API.
+  const [editor, setEditor] = useState<Editor | null>(null);
   useEffect(() => {
-    const editor = findEditor(host);
+    // The editor is created by the host component after it mounts; wait for it.
+    let frame = 0;
+    let tries = 0;
+    const look = () => {
+      const found = findEditor(host);
+      if (found) setEditor(found);
+      else if (tries++ < 600) frame = requestAnimationFrame(look);
+    };
+    look();
+    return () => cancelAnimationFrame(frame);
+  }, [host]);
+
+  useEffect(() => {
     editorRef.current = editor;
     if (!editor) return;
     let detach: (() => void) | undefined;
@@ -199,7 +223,7 @@ function LogsView({ root, host }: { root: Element; host: HTMLElement }) {
       subscriptions.forEach((s) => s.dispose());
       detach?.();
     };
-  }, [host]);
+  }, [editor, host]);
 
   const key = JSON.stringify(view.target);
 
