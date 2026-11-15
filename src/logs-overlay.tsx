@@ -16,6 +16,11 @@ const STYLE = `
 .PodLogs .LogSearch { display: none !important; }
 /* Keep native selection out of the gutter, so double-click selects words only. */
 .BetterLogs .margin, .BetterLogs .margin * { user-select: none !important; -webkit-user-select: none !important; }
+.BetterLogs .bl-loading { display: flex; align-items: center; height: 100%; padding-left: 8px; opacity: 0.7; font-size: 12px; }
+.BetterLogs .bl-dots i { display: inline-block; width: 4px; height: 4px; margin-right: 4px; border-radius: 50%; background: currentColor; animation: bl-blink 1.2s infinite ease-in-out both; }
+.BetterLogs .bl-dots i:nth-child(2) { animation-delay: 0.2s; }
+.BetterLogs .bl-dots i:nth-child(3) { animation-delay: 0.4s; }
+@keyframes bl-blink { 0%, 80%, 100% { opacity: 0.2; } 40% { opacity: 1; } }
 ${HIGHLIGHT_CSS}`;
 
 interface View {
@@ -35,6 +40,27 @@ interface Editor extends HighlightEditor {
   getScrollHeight(): number;
   getLayoutInfo(): { height: number };
   setScrollTop(top: number): void;
+  changeViewZones(callback: (accessor: ViewZoneAccessor) => void): void;
+}
+
+interface ViewZoneAccessor {
+  addZone(zone: { afterLineNumber: number; heightInPx: number; domNode: HTMLElement }): string;
+  removeZone(id: string): void;
+}
+
+/** A line above the first one with animated dots, shown while older lines are being fetched. */
+function showLoadingLine(editor: Editor): () => void {
+  const node = document.createElement("div");
+  node.className = "bl-loading";
+  node.innerHTML = '<span class="bl-dots"><i></i><i></i><i></i></span>';
+  let id = "";
+  editor.changeViewZones((a) => (id = a.addZone({ afterLineNumber: 0, heightInPx: 20, domNode: node })));
+  let removed = false;
+  return () => {
+    if (removed) return;
+    removed = true;
+    editor.changeViewZones((a) => a.removeZone(id));
+  };
 }
 
 const text = (root: Element, selector: string) =>
@@ -202,9 +228,12 @@ function LogsView({ root, host }: { root: Element; host: HTMLElement }) {
         const source = sourceRef.current;
         if (!source?.hasOlder || loadingOlder.current || editor.getScrollTop() > OLDER_AT_PX) return;
         loadingOlder.current = true;
+        const hideLoading = showLoadingLine(editor);
         try {
           const first = editor.getVisibleRanges()[0]?.startLineNumber ?? 1;
           const added = await source.loadOlder();
+          stickToBottom.current = false; // removing the zone resizes the content; don't jump
+          hideLoading();
           if (added && sourceRef.current === source) {
             anchorLine.current = first + added;
             stickToBottom.current = false;
@@ -213,6 +242,7 @@ function LogsView({ root, host }: { root: Element; host: HTMLElement }) {
         } catch {
           // Try again on the next scroll.
         } finally {
+          hideLoading();
           loadingOlder.current = false;
         }
       }),
@@ -270,7 +300,9 @@ function LogsView({ root, host }: { root: Element; host: HTMLElement }) {
       language={"plaintext" as "yaml"}
       options={{
         minimap: { enabled: false },
-        lineNumbers: "on",
+        lineNumbers: "off",
+        folding: false,
+        lineDecorationsWidth: 8,
         wordWrap: view.wrap ? "on" : "off",
         scrollBeyondLastLine: false,
         padding: { top: 4, bottom: 8 },
